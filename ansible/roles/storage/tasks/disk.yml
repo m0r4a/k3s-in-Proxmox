@@ -1,0 +1,38 @@
+- name: Find the data disk (first disk that is not the root disk)
+  ansible.builtin.shell: |
+    root_disk=$(findmnt -no SOURCE / | sed 's|/dev/||' | sed 's|[0-9]*$||' | sed 's|p$||')
+    lsblk -ndo NAME,TYPE | awk '$2=="disk" && $1!="'"$root_disk"'"{print $1; exit}'
+  register: _data_disk
+  changed_when: false
+
+- name: Fail if no data disk was found
+  ansible.builtin.fail:
+    msg: "No data disk found. Ensure the storage VM has a second disk attached."
+  when: _data_disk.stdout | length == 0
+
+- name: Create a partition on the data disk
+  community.general.parted:
+    device: "/dev/{{ _data_disk.stdout }}"
+    number: 1
+    state: present
+    fs_type: "{{ seaweedfs_data_filesystem }}"
+
+- name: Format the data partition
+  community.general.filesystem:
+    fstype: "{{ seaweedfs_data_filesystem }}"
+    dev: "/dev/{{ _data_disk.stdout }}1"
+    state: present
+
+- name: Ensure the mountpoint exists
+  ansible.builtin.file:
+    path: "{{ seaweedfs_data_mountpoint }}"
+    state: directory
+    mode: "0755"
+
+- name: Mount the data disk
+  ansible.posix.mount:
+    path: "{{ seaweedfs_data_mountpoint }}"
+    src: "/dev/{{ _data_disk.stdout }}1"
+    fstype: "{{ seaweedfs_data_filesystem }}"
+    opts: defaults,noatime
+    state: mounted

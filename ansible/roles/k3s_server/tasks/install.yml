@@ -36,3 +36,4 @@
 - name: Expose k3s token as host fact (used by workers)
   ansible.builtin.set_fact:
     k3s_node_token: "{{ _k3s_token_raw.content | b64decode | trim }}"
+  no_log: true

@@ -1,60 +1,183 @@
-resource "proxmox_vm_qemu" "cloudinit" {
-  for_each = local.nodes_normalized
+resource "proxmox_virtual_environment_vm" "node" {
+  for_each = local.k3s_nodes
 
-  vmid        = each.value.vmid
-  name        = each.value.hostname
-  target_node = var.proxmox_node
-  agent       = 1
+  vm_id         = each.value.vmid
+  name          = each.value.hostname
+  node_name     = var.proxmox_node
+  tags          = each.value.tags
+  on_boot       = each.value.on_boot
+  started       = true
+  machine       = "q35"
+  bios          = "ovmf"
+  scsi_hardware = "virtio-scsi-single"
+  boot_order    = ["scsi0"]
+
+  clone {
+    vm_id        = var.template_vm_id
+    datastore_id = var.clone_datastore_id
+    full         = true
+    retries      = 3
+  }
+
   cpu {
     cores = each.value.cores
-  }
-  memory           = each.value.memory
-  boot             = "order=scsi0"     # has to be the same as the OS disk of the template
-  clone            = var.template_name # The name of the template
-  scsihw           = "virtio-scsi-single"
-  vm_state         = "running"
-  automatic_reboot = true
-
-  # Cloud-Init configuration
-  cicustom   = "vendor=local:snippets/qemu-guest-agent.yml" # /var/lib/vz/snippets/qemu-guest-agent.yml
-  ciupgrade  = true
-  nameserver = "1.1.1.1 8.8.8.8"
-  ipconfig0  = "ip=${each.value.ip}/${var.network_cidr},gw=${var.network_gateway}"
-  skip_ipv6  = true
-  ciuser     = var.vm_user
-  cipassword = each.value.password
-  sshkeys    = local.ssh_public_key_content
-
-  # Most cloud-init images require a serial device for their display
-  serial {
-    id = 0
+    type  = "max"
   }
 
-  disks {
-    scsi {
-      scsi0 {
-        # We have to specify the disk from our template, else Terraform will think it's not supposed to be there
-        disk {
-          storage = "local-lvm"
-          # The size of the disk should be at least as big as the disk in the template. If it's smaller, the disk will be recreated
-          size = each.value.disk_size
-        }
+  memory {
+    dedicated = each.value.memory
+  }
+
+  efi_disk {
+    datastore_id = var.clone_datastore_id
+    file_format  = "raw"
+    type         = "4m"
+  }
+
+  disk {
+    datastore_id = var.clone_datastore_id
+    interface    = "scsi0"
+    iothread     = true
+    discard      = "on"
+    size         = each.value.disk_size_gb
+  }
+
+  initialization {
+    datastore_id = var.cloudinit_datastore_id
+    upgrade      = false
+
+    ip_config {
+      ipv4 {
+        address = "${each.value.ip}/${var.network_cidr}"
+        gateway = var.network_gateway
       }
     }
-    ide {
-      # Some images require a cloud-init disk on the IDE controller, others on the SCSI or SATA controller
-      ide1 {
-        cloudinit {
-          storage = "local-lvm"
-        }
-      }
+
+    dns {
+      servers = var.dns_servers
+    }
+
+    user_account {
+      username = each.value.user
+      password = each.value.password
+      keys     = [local.ssh_public_key_content]
     }
   }
 
-  network {
-    id     = 0
+  network_device {
     bridge = var.network_bridge
     model  = "virtio"
+  }
+
+  serial_device {
+    device = "socket"
+  }
+
+  agent {
+    enabled = true
+  }
+
+  hotplug             = "network,disk,usb"
+  reboot_after_update = true
+
+  lifecycle {
+    ignore_changes = [tags]
+  }
+}
+
+resource "proxmox_virtual_environment_vm" "storage" {
+  for_each = local.storage_nodes
+
+  vm_id         = each.value.vmid
+  name          = each.value.hostname
+  node_name     = var.proxmox_node
+  tags          = each.value.tags
+  on_boot       = each.value.on_boot
+  started       = true
+  machine       = "q35"
+  bios          = "ovmf"
+  scsi_hardware = "virtio-scsi-single"
+  boot_order    = ["scsi0"]
+
+  clone {
+    vm_id        = var.template_vm_id
+    datastore_id = var.clone_datastore_id
+    full         = true
+    retries      = 3
+  }
+
+  cpu {
+    cores = each.value.cores
+    type  = "max"
+  }
+
+  memory {
+    dedicated = each.value.memory
+  }
+
+  efi_disk {
+    datastore_id = var.clone_datastore_id
+    file_format  = "raw"
+    type         = "4m"
+  }
+
+  disk {
+    datastore_id = var.clone_datastore_id
+    interface    = "scsi0"
+    iothread     = true
+    discard      = "on"
+    size         = each.value.disk_size_gb
+  }
+
+  disk {
+    datastore_id = var.clone_datastore_id
+    interface    = "scsi1"
+    iothread     = true
+    discard      = "on"
+    size         = each.value.storage_disk_gb
+  }
+
+  initialization {
+    datastore_id = var.cloudinit_datastore_id
+    upgrade      = false
+
+    ip_config {
+      ipv4 {
+        address = "${each.value.ip}/${var.network_cidr}"
+        gateway = var.network_gateway
+      }
+    }
+
+    dns {
+      servers = var.dns_servers
+    }
+
+    user_account {
+      username = each.value.user
+      password = each.value.password
+      keys     = [local.ssh_public_key_content]
+    }
+  }
+
+  network_device {
+    bridge = var.network_bridge
+    model  = "virtio"
+  }
+
+  serial_device {
+    device = "socket"
+  }
+
+  agent {
+    enabled = true
+  }
+
+  hotplug             = "network,disk,usb"
+  reboot_after_update = true
+
+  lifecycle {
+    #    prevent_destroy = true
+    ignore_changes = [tags]
   }
 }
 
@@ -62,35 +185,24 @@ resource "null_resource" "ssh_keyscan" {
   for_each = local.nodes_normalized
 
   triggers = {
-    vm_id = proxmox_vm_qemu.cloudinit[each.key].id
+    vm_id = contains(keys(local.k3s_nodes), each.key) ? proxmox_virtual_environment_vm.node[each.key].vm_id : proxmox_virtual_environment_vm.storage[each.key].vm_id
     vm_ip = each.value.ip
   }
 
   provisioner "local-exec" {
-    command = <<EOT
-      # Delete old key
-      ssh-keygen -R ${each.value.ip} || true
-
-      echo "Waiting for SSH to be ready on ${each.value.ip}..."
-
-      for i in {1..10}; do
+    command = <<-EOT
+      ssh-keygen -R ${each.value.ip} 2>/dev/null || true
+      for i in $(seq 1 30); do
         KEY=$(ssh-keyscan -H ${each.value.ip} 2>/dev/null)
-
-        # If key has something means it worked
         if [ -n "$KEY" ]; then
           echo "$KEY" >> ~/.ssh/known_hosts
-          echo "SSH key succesfully added"
           exit 0
         fi
-
-        echo "Attempt $i: SSH still not responding... retrying 10s"
         sleep 10
       done
-
-      echo "Couldn't get the SSH key after many retries"
       exit 1
     EOT
   }
 
-  depends_on = [proxmox_vm_qemu.cloudinit]
+  depends_on = [proxmox_virtual_environment_vm.node, proxmox_virtual_environment_vm.storage]
 }

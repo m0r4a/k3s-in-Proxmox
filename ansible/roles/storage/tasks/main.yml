@@ -1,0 +1,16 @@
+- name: Prepare the data disk
+  ansible.builtin.include_tasks: disk.yml
+  tags: [storage, disk]
+
+- name: Install Docker
+  ansible.builtin.include_tasks: docker.yml
+  tags: [storage, docker]
+
+- name: Configure firewall
+  ansible.builtin.include_tasks: firewall.yml
+  when: seaweedfs_firewall_enabled | bool
+  tags: [storage, firewall]
+
+- name: Deploy SeaweedFS
+  ansible.builtin.include_tasks: seaweedfs.yml
+  tags: [storage, seaweedfs]

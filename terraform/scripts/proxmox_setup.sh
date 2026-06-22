@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Configures a Proxmox node for Terraform provisioning with cloud-init support.
+# Configures a Proxmox node for Terraform provisioning with the bpg provider.
+# Creates a PVE role/user/token and, optionally, a cloud-init template and a
+# qemu-guest-agent snippet. The template can also be created by the
+# vm_template Terraform module; pass --skip-template to keep using that path.
 
 # Usage: ./proxmox-setup.sh --host <IP> [options]
 
@@ -39,8 +42,8 @@ ROCKY_URL="https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-Generic
 ROCKY_IMG="/root/rocky10-cloudinit.qcow2"
 SNIPPET_PATH="/var/lib/vz/snippets/qemu-guest-agent.yml"
 
-SKIP_TEMPLATE=false
-SKIP_SNIPPET=false
+SKIP_TEMPLATE=true
+SKIP_SNIPPET=true
 UNINSTALL=false
 
 ROLE_PRIVS="Datastore.AllocateSpace Datastore.AllocateTemplate Datastore.Audit \
@@ -50,44 +53,47 @@ VM.Allocate VM.Audit VM.Clone \
 VM.Config.CDROM VM.Config.Cloudinit VM.Config.CPU VM.Config.Disk \
 VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options \
 VM.Migrate VM.PowerMgmt SDN.Use \
+Datastore.Allocate \
 VM.GuestAgent.Audit VM.GuestAgent.Unrestricted"
 
 usage() {
 	cat <<EOF
-${BOLD}proxmox-setup.sh${NC} — Proxmox Terraform + cloud-init setup
+$(echo -e "${BOLD}proxmox_setup.sh${NC}") — Proxmox Terraform + cloud-init setup
 
-${BOLD}USAGE${NC}
+$(echo -e "${BOLD}USAGE${NC}")
   $(basename "$0") --host <IP> [options]
 
-${BOLD}CONNECTION${NC}
+$(echo -e "${BOLD}CONNECTION${NC}")
   --host <IP>            Proxmox node IP or hostname     (required)
   --ssh-user <user>      SSH login user                  (default: root)
   --ssh-key <path>       Path to private key             (recommended)
   --ssh-pass <pass>      SSH password (requires sshpass)
 
-${BOLD}TERRAFORM USER${NC}
+$(echo -e "${BOLD}TERRAFORM USER${NC}")
   --tf-user <name>       PVE username                    (default: terraform-prov)
   --tf-pass <pass>       PVE user password               (prompted if omitted)
   --token-name <name>    API token name                  (default: mytoken)
 
-${BOLD}TEMPLATE${NC}
+$(echo -e "${BOLD}TEMPLATE${NC}")
   --template-id <id>     VM ID for the template          (default: 9000)
   --template-name <name> VM name for the template        (default: rocky10-cloudinit)
   --storage <pool>       Proxmox storage pool            (default: local-lvm)
   --rocky-url <url>      Override Rocky Linux image URL
 
-  --skip-template        Skip cloud-init template creation
-  --skip-snippet         Skip qemu-guest-agent snippet creation
+  --create-template      Create cloud-init template and snippet (skipped by
+                         default; use the vm_template Terraform module instead)
+  --skip-template        Skip template creation (default)
+  --skip-snippet         Skip qemu-guest-agent snippet creation (default)
 
-${BOLD}TEARDOWN${NC}
+$(echo -e "${BOLD}TEARDOWN${NC}")
   --uninstall            Remove all resources created by this script
 
-${BOLD}EXAMPLES${NC}
-  # Full setup with SSH key:
+$(echo -e "${BOLD}EXAMPLES${NC}")
+  # Setup PVE user/token + SSH service user (template via Terraform module):
   $(basename "$0") --host 192.168.1.10 --ssh-key ~/.ssh/id_ed25519
 
-  # User/token only, template already exists:
-  $(basename "$0") --host 192.168.1.10 --ssh-key ~/.ssh/id_ed25519 --skip-template --skip-snippet
+  # Full setup including template creation:
+  $(basename "$0") --host 192.168.1.10 --ssh-key ~/.ssh/id_ed25519 --create-template
 
   # Tear everything down:
   $(basename "$0") --host 192.168.1.10 --ssh-key ~/.ssh/id_ed25519 --uninstall
@@ -147,6 +153,11 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--skip-template)
 		SKIP_TEMPLATE=true
+		shift
+		;;
+	--create-template)
+		SKIP_TEMPLATE=false
+		SKIP_SNIPPET=false
 		shift
 		;;
 	--skip-snippet)
@@ -407,23 +418,30 @@ if [[ -n "${TOKEN_OUTPUT}" ]]; then
 	warn "Save this token secret — it will not be shown again:"
 	echo
 	echo -e "${YELLOW}${TOKEN_OUTPUT}${NC}"
+
+	TOKEN_SECRET=$(echo "${TOKEN_OUTPUT}" | grep '^│ value' | sed 's/.*│ //' | sed 's/ │//')
 fi
 
 echo
-info "Terraform provider config:"
+info "terraform.tfvars (copy to terraform/terraform.tfvars):"
 echo
 cat <<EOF
-provider "proxmox" {
-  pm_api_url          = "https://${PVE_HOST}:8006/api2/json"
-  pm_tls_insecure     = true
-}
+proxmox_endpoint             = "https://${PVE_HOST}:8006/"
+proxmox_api_token            = "${FULL_USER}!${TOKEN_NAME}=${TOKEN_SECRET:-<token secret above>}"
+proxmox_insecure             = true
+proxmox_ssh_user             = "root"
+proxmox_ssh_private_key_path = "~/.ssh/id_ed25519"
 EOF
 echo
 
-info ".env file"
+info "Security notes:"
 echo
 cat <<EOF
-export PM_API_TOKEN_ID="${FULL_USER}!${TOKEN_NAME}"
-export PM_API_TOKEN_SECRET="<token secret above>"
+- The script does NOT modify SSH settings on your PVE host.
+- PVE API user '${FULL_USER}' has the TerraformProv role with limited privileges.
+- The API token has privilege separation disabled (full user permissions via API).
+- The bpg provider uses root SSH for snippet uploads. This is required because
+  the provider writes to /var/lib/vz/snippets/ which is owned by root.
+- VM SSH hardening (disable root, key-only auth) is applied by Ansible on the VMs, not the PVE host.
 EOF
 echo

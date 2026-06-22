@@ -1,151 +1,293 @@
 variable "proxmox_node" {
-  description = "The name of your proxmox node"
+  description = "Proxmox node where the cluster VMs will be created."
   type        = string
+
+  validation {
+    condition     = length(var.proxmox_node) > 0
+    error_message = "proxmox_node must not be empty."
+  }
 }
 
-variable "template_name" {
-  description = "The cloud-init's template name"
+variable "template_vm_id" {
+  description = "VM ID of the cloud-init template to clone. Provide module.vm_template.template_vm_id, or an existing template ID."
+  type        = number
+
+  validation {
+    condition     = var.template_vm_id > 0 && var.template_vm_id < 999999999
+    error_message = "template_vm_id must be a positive integer."
+  }
+}
+
+variable "clone_datastore_id" {
+  description = "Datastore where cloned VM disks are placed."
   type        = string
-  default     = "rocky10-cloudinit"
+  default     = "local-lvm"
+
+  validation {
+    condition     = length(var.clone_datastore_id) > 0
+    error_message = "clone_datastore_id must not be empty."
+  }
+}
+
+variable "cloudinit_datastore_id" {
+  description = "Datastore used for the per-VM cloud-init drive."
+  type        = string
+  default     = "local-lvm"
+
+  validation {
+    condition     = length(var.cloudinit_datastore_id) > 0
+    error_message = "cloudinit_datastore_id must not be empty."
+  }
 }
 
 variable "cluster_name" {
-  description = "The prefix that the hostname of your VMs will have"
+  description = "Prefix prepended to every VM hostname. Empty keeps the map key as the hostname."
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.cluster_name == "" || can(regex("^[a-z][a-z0-9-]*$", var.cluster_name))
+    error_message = "cluster_name must start with a lowercase letter and contain only lowercase letters, digits, and hyphens."
+  }
 }
 
 variable "vm_user" {
-  description = "The username of the main user for the image"
+  description = "Cloud-init username for the VMs. Inherited from the template when omitted on a node."
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z_][a-z0-9_-]*$", var.vm_user))
+    error_message = "vm_user must be a valid Unix username (lowercase, start with letter or underscore)."
+  }
 }
 
 variable "vm_password" {
-  description = "The password of the user defined on vm_user"
+  description = "Cloud-init password for vm_user."
   type        = string
   sensitive   = true
-}
-
-variable "nodes" {
-  description = "Declaration of your nodes"
-  type = map(object({
-    vmid      = number
-    role      = string
-    user      = optional(string)
-    password  = optional(string)
-    cores     = optional(number)
-    memory    = optional(number)
-    disk_size = optional(string)
-    ip        = string
-  }))
 
   validation {
-    condition = alltrue([
-      for node in var.nodes : contains(["control-plane", "worker"], node.role)
-    ])
-    error_message = "Role must be either control-plane or worker"
-  }
-
-  validation {
-    condition     = length(var.nodes) == length(distinct([for node in var.nodes : node.vmid]))
-    error_message = "All VMIDs must be unique across nodes"
-  }
-
-  validation {
-    condition     = length([for node in var.nodes : node if node.role == "control-plane"]) >= 1
-    error_message = "There must be at least one control-plane node"
+    condition     = length(var.vm_password) > 0
+    error_message = "vm_password must not be empty."
   }
 }
-
-variable "cores" {
-  description = "Amount of cores for your VMs"
-  type        = number
-  default     = 3
-
-  validation {
-    condition     = var.cores >= 2
-    error_message = "Cores must be at least 2."
-  }
-}
-
-variable "memory" {
-  description = "Amount of RAM for your VMs (in MB)"
-  type        = number
-  default     = 4096
-
-  validation {
-    condition     = var.memory >= 2048
-    error_message = "Memory must be at least 2048 MB (2 GB)."
-  }
-}
-
-variable "disk_size" {
-  description = "The size of the disk on the VM (e.g., 20G, 50G)"
-  type        = string
-  default     = "20G"
-
-  validation {
-    condition     = can(regex("^[0-9]+[GMgm]$", var.disk_size))
-    error_message = "Disk size must be in format like '20G' or '20g' (number followed by G or M)."
-  }
-
-  validation {
-    condition = (
-      tonumber(regex("^([0-9]+)", var.disk_size)[0]) >= 20 &&
-      can(regex("[Gg]$", var.disk_size))
-      ) || (
-      tonumber(regex("^([0-9]+)", var.disk_size)[0]) >= 20480 &&
-      can(regex("[Mm]$", var.disk_size))
-    )
-    error_message = "Disk size must be at least 20G (or 20480M)."
-  }
-}
-
-# variable "ssh_user" {
-#   description = "The user you will ssh into"
-#   type        = string
-# }
 
 variable "ssh_public_key" {
-  description = "The .pub ssh key you want to add to the .authorized_keys. This key needs to match with your private key for Ansible."
+  description = "SSH public key (raw or path to a .pub file) added to each VM."
   type        = string
+
+  validation {
+    condition     = length(var.ssh_public_key) > 0
+    error_message = "ssh_public_key must not be empty."
+  }
 }
 
 variable "ssh_private_key_path" {
-  description = "The path of the private key you will use with Ansible."
+  description = "Path to the SSH private key Ansible uses to reach the nodes."
   type        = string
 
   validation {
     condition     = can(file(pathexpand(var.ssh_private_key_path)))
     error_message = "SSH private key file does not exist at the specified path."
   }
+}
+
+variable "nodes" {
+  description = "Cluster nodes. The map key is the hostname suffix (or full hostname when cluster_name is empty)."
+  type = map(object({
+    vmid            = number
+    role            = string
+    ip              = string
+    user            = optional(string)
+    password        = optional(string)
+    cores           = optional(number)
+    memory          = optional(number)
+    disk_size_gb    = optional(number)
+    storage_disk_gb = optional(number)
+  }))
 
   validation {
-    condition     = can(regex("^[~/.]", var.ssh_private_key_path))
-    error_message = "SSH private key path must start with ~, /, or . (e.g., ~/.ssh/id_rsa or /home/user/.ssh/id_rsa)"
+    condition     = length(var.nodes) > 0
+    error_message = "At least one node is required."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : contains(["control-plane", "worker", "storage"], n.role)])
+    error_message = "Role must be one of: control-plane, worker, storage."
+  }
+
+  validation {
+    condition     = length(var.nodes) == length(distinct([for n in var.nodes : n.vmid]))
+    error_message = "All VM IDs must be unique across nodes."
+  }
+
+  validation {
+    condition     = length([for n in var.nodes : n if n.role == "storage"]) == length(var.nodes) || length([for n in var.nodes : n if n.role == "control-plane"]) >= 1
+    error_message = "At least one control-plane node is required when provisioning k3s members."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.role != "storage" || n.storage_disk_gb != null])
+    error_message = "storage_disk_gb is required for storage-role nodes."
+  }
+
+  validation {
+    condition     = length(var.nodes) == length(distinct([for n in var.nodes : n.ip]))
+    error_message = "All IP addresses must be unique across nodes."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}$", n.ip))])
+    error_message = "All node IPs must be valid IPv4 addresses."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.vmid > 0 && n.vmid < 999999999])
+    error_message = "All VM IDs must be positive integers."
+  }
+
+  validation {
+    condition     = alltrue([for k, n in var.nodes : can(regex("^[a-z][a-z0-9-]*$", k))])
+    error_message = "Node map keys must be valid hostnames (lowercase, start with letter, alphanumeric and hyphens only)."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.cores == null || (n.cores >= 1 && n.cores <= 128)])
+    error_message = "Per-node cores must be between 1 and 128."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.memory == null || (n.memory >= 512 && n.memory <= 1048576)])
+    error_message = "Per-node memory must be between 512 MB and 1024 GB."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.disk_size_gb == null || n.disk_size_gb >= 20])
+    error_message = "Per-node disk_size_gb must be at least 20 GB."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.storage_disk_gb == null || n.storage_disk_gb >= 10])
+    error_message = "Per-node storage_disk_gb must be at least 10 GB."
+  }
+}
+
+variable "cores" {
+  description = "Default CPU cores per VM. Overridable per node."
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.cores >= 1 && var.cores <= 128
+    error_message = "cores must be between 1 and 128."
+  }
+}
+
+variable "memory" {
+  description = "Default memory (MB) per VM. Overridable per node."
+  type        = number
+  default     = 4096
+
+  validation {
+    condition     = var.memory >= 512 && var.memory <= 1048576
+    error_message = "memory must be between 512 MB and 1024 GB."
+  }
+}
+
+variable "disk_size_gb" {
+  description = "Default boot disk size in GB. Overridable per node."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.disk_size_gb >= 20
+    error_message = "disk_size_gb must be at least 20 GB."
+  }
+}
+
+variable "storage_disk_gb" {
+  description = "Size in GB of the extra data disk attached to storage-role VMs. Ignored for other roles."
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.storage_disk_gb >= 10
+    error_message = "storage_disk_gb must be at least 10 GB."
+  }
+}
+
+variable "network_bridge" {
+  description = "Proxmox bridge the VM network devices attach to."
+  type        = string
+  default     = "vmbr0"
+
+  validation {
+    condition     = can(regex("^vmbr[0-9]+$", var.network_bridge))
+    error_message = "network_bridge must be a valid Proxmox bridge name (e.g. vmbr0, vmbr1)."
   }
 }
 
 variable "network_gateway" {
-  description = "Your network gateway"
+  description = "IPv4 gateway for the VMs."
   type        = string
-  default     = ""
+
+  validation {
+    condition     = can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}$", var.network_gateway))
+    error_message = "network_gateway must be a valid IPv4 address."
+  }
 }
 
 variable "network_cidr" {
-  description = "The cidr of your network"
+  description = "Network prefix length used when assigning static IPs."
   type        = number
   default     = 24
+
+  validation {
+    condition     = var.network_cidr >= 8 && var.network_cidr <= 32
+    error_message = "network_cidr must be between 8 and 32."
+  }
 }
 
-variable "network_bridge" {
-  description = "The bridge that your VM will use"
+variable "dns_servers" {
+  description = "DNS servers written to each VM via cloud-init."
+  type        = list(string)
+  default     = ["1.1.1.1", "8.8.8.8"]
+
+  validation {
+    condition     = length(var.dns_servers) > 0
+    error_message = "At least one DNS server is required."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.dns_servers : can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}$", s))])
+    error_message = "All DNS servers must be valid IPv4 addresses."
+  }
+}
+
+variable "k3s_cluster_cidr" {
+  description = "Pod CIDR for the k3s cluster."
   type        = string
-  default     = "vmbr0"
+  default     = "11.0.0.0/16"
+
+  validation {
+    condition     = can(regex("^[0-9.]+/[0-9]+$", var.k3s_cluster_cidr))
+    error_message = "k3s_cluster_cidr must be in CIDR notation (e.g. 11.0.0.0/16)."
+  }
+}
+
+variable "k3s_service_cidr" {
+  description = "Service CIDR for the k3s cluster."
+  type        = string
+  default     = "11.1.0.0/16"
+
+  validation {
+    condition     = can(regex("^[0-9.]+/[0-9]+$", var.k3s_service_cidr))
+    error_message = "k3s_service_cidr must be in CIDR notation (e.g. 11.1.0.0/16)."
+  }
 }
 
 variable "ansible" {
-  description = "Ansible integration config. Set enabled = true to generate inventory and group_vars."
+  description = "Ansible integration. When enabled, writes inventory.ini to the ansible directory."
   type = object({
     enabled = bool
     path    = optional(string, "")
@@ -159,21 +301,10 @@ variable "ansible" {
     condition     = !var.ansible.enabled || var.ansible.path != ""
     error_message = "ansible.path is required when ansible.enabled is true."
   }
-
-  validation {
-    condition     = var.ansible.path == "" || !can(regex("\\.(ini|yaml)$", var.ansible.path))
-    error_message = "ansible.path must be a directory, not a file path (e.g. './ansible', not './ansible/inventory.ini')."
-  }
 }
 
-variable "k3s_cluster_cidr" {
-  description = "Pod CIDR for the k3s cluster"
-  type        = string
-  default     = "11.0.0.0/16"
-}
-
-variable "k3s_service_cidr" {
-  description = "Service CIDR for the k3s cluster"
-  type        = string
-  default     = "11.1.0.0/16"
+variable "tags" {
+  description = "Tags applied to every VM in addition to role/cluster tags."
+  type        = list(string)
+  default     = []
 }

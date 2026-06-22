@@ -1,0 +1,78 @@
+# Template: either create one with the vm_template module or use an existing
+# template ID (e.g. 9000 from proxmox_setup.sh). Uncomment one of the two
+# blocks below.
+
+# Option 1: create the template with the vm_template module.
+module "vm_template" {
+  source = "./modules/vm_template"
+
+  proxmox_node    = var.proxmox_node
+  template_vm_id  = var.template_vm_id
+  vm_user         = var.vm_user
+  ssh_public_keys = [trimspace(file(pathexpand(var.ssh_public_key)))]
+}
+
+# Option 1a: create the template using an existing image already on Proxmox.
+# module "vm_template" {
+#   source = "./modules/vm_template"
+#
+#   proxmox_node    = var.proxmox_node
+#   template_vm_id  = var.template_vm_id
+#   vm_user         = var.vm_user
+#   image_url       = null
+#   image_file_id   = "local:iso/rocky10-cloudinit.img"
+#   ssh_public_keys = [trimspace(file(pathexpand(var.ssh_public_key)))]
+# }
+
+# Option 2: use an existing template (e.g. created by proxmox_setup.sh).
+# Skip the vm_template module and pass the ID directly to k8s_cluster.
+
+module "k3s_cluster" {
+  source = "./modules/k8s_cluster"
+
+  proxmox_node         = var.proxmox_node
+  template_vm_id       = module.vm_template.template_vm_id
+  vm_user              = var.vm_user
+  vm_password          = var.vm_password
+  ssh_public_key       = var.ssh_public_key
+  ssh_private_key_path = var.ssh_private_key_path
+  network_bridge       = var.network_bridge
+  network_gateway      = var.network_gateway
+
+  ansible = {
+    enabled = true
+    path    = "../ansible"
+  }
+
+  nodes = {
+    control-plane = {
+      vmid   = 201
+      role   = "control-plane"
+      ip     = "10.0.0.10"
+      memory = 4096
+      cores  = 2
+    }
+    worker1 = {
+      vmid   = 202
+      role   = "worker"
+      ip     = "10.0.0.11"
+      memory = 4096
+      cores  = 2
+    }
+    worker2 = {
+      vmid   = 203
+      role   = "worker"
+      ip     = "10.0.0.12"
+      memory = 4096
+      cores  = 2
+    }
+    storage1 = {
+      vmid            = 301
+      role            = "storage"
+      ip              = "10.0.0.20"
+      memory          = 4096
+      cores           = 2
+      storage_disk_gb = 100
+    }
+  }
+}

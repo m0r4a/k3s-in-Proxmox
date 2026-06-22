@@ -1,0 +1,12 @@
+services:
+  seaweedfs:
+    image: {{ seaweedfs_image }}
+    container_name: seaweedfs
+    restart: unless-stopped
+    ports:
+      - "{{ seaweedfs_s3_port }}:8333"
+      - "{{ seaweedfs_master_port }}:9333"
+      - "{{ seaweedfs_filer_port }}:8888"
+    volumes:
+      - {{ seaweedfs_data_dir }}:/data
+    command: server -s3 -dir=/data

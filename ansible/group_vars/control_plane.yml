@@ -3,4 +3,3 @@ common_extra_packages:
   - bash-completion
   - openssl
   - curl
-  - which

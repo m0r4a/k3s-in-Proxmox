@@ -1,0 +1,22 @@
+- name: Ensure SeaweedFS data directory exists
+  ansible.builtin.file:
+    path: "{{ seaweedfs_data_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Ensure compose directory exists
+  ansible.builtin.file:
+    path: "{{ seaweedfs_compose_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ seaweedfs_compose_dir }}/docker-compose.yml"
+    mode: "0644"
+  notify: restart seaweedfs
+
+- name: Ensure SeaweedFS is running
+  ansible.builtin.command: docker compose -f {{ seaweedfs_compose_dir }}/docker-compose.yml up -d
+  changed_when: false

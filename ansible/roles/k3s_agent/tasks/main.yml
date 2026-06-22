@@ -3,9 +3,16 @@
     path: "{{ k3s_agent_binary }}"
   register: _k3s_agent_stat
 
-- name: Retrieve node token from control plane host facts
+- name: Read k3s node token from control plane
+  ansible.builtin.slurp:
+    src: "{{ k3s_token_file }}"
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  register: _k3s_token_raw
+  no_log: true
+
+- name: Set k3s node token fact
   ansible.builtin.set_fact:
-    k3s_node_token: "{{ hostvars[groups['control_plane'][0]]['k3s_node_token'] }}"
+    k3s_node_token: "{{ _k3s_token_raw.content | b64decode | trim }}"
   no_log: true
 
 - name: Install k3s agent

@@ -18,8 +18,7 @@
 
 - name: Restrict SeaweedFS ports to cluster CIDR
   ansible.posix.firewalld:
-    port: "{{ item }}/tcp"
-    source: "{{ seaweedfs_allowed_cidr }}"
+    rich_rule: "rule family=ipv4 source address={{ seaweedfs_allowed_cidr }} port port={{ item }} protocol=tcp accept"
     permanent: true
     state: enabled
     immediate: true

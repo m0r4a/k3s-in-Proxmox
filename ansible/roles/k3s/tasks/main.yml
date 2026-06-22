@@ -19,7 +19,7 @@
 
 - name: Configure kernel modules to load at boot
   ansible.builtin.copy:
-    dest: /etc/modules-load.d/k8s.conf
+    dest: /etc/modules-load.d/k3s.conf
     content: |
       {% for module in k3s_kernel_modules %}
       {{ module }}
@@ -40,7 +40,7 @@
   ansible.posix.sysctl:
     name: "{{ item.key }}"
     value: "{{ item.value }}"
-    sysctl_file: /etc/sysctl.d/k8s.conf
+    sysctl_file: /etc/sysctl.d/k3s.conf
     reload: true
     state: present
   loop: "{{ k3s_sysctl_params | dict2items }}"

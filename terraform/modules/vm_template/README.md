@@ -15,7 +15,7 @@ cloned VMs boot with the agent running.
    shell commands on the PVE host. Use this if you prefer not to manage
    the template in Terraform state.
 
-In all cases, pass the template's VM ID to the `k8s_cluster` module's
+In all cases, pass the template's VM ID to the `k3s_cluster` module's
 `template_vm_id` variable. The cluster module clones whatever template
 is at that ID.
 
@@ -40,7 +40,7 @@ already on the Proxmox node instead of downloading one.
 ## Using an existing template
 
 Skip this module entirely and pass the existing template's VM ID directly
-to the `k8s_cluster` module's `template_vm_id` variable.
+to the `k3s_cluster` module's `template_vm_id` variable.
 
 ## VM configuration
 

@@ -1,4 +1,4 @@
-# k8s_cluster module
+# k3s_cluster module
 
 Clones a cloud-init template into k3s cluster VMs and optional storage
 VMs on Proxmox VE. Built for the `bpg/proxmox` provider.

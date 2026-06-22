@@ -40,6 +40,7 @@ creates a new user. Your root SSH access is left untouched.
 
 ```bash
 cd ..  # back to terraform/
+cp main.tf.example main.tf              # edit node definitions
 cp terraform.tfvars.example terraform.tfvars  # edit with your values
 terraform init
 terraform apply
@@ -62,17 +63,17 @@ Ansible installs k3s, Cilium, Helm, Flux, and SeaweedFS.
 
 ```
 terraform/
-  main.tf                 Module usage (edit this)
-  versions.tf             Provider pinning
-  providers.tf            Provider config
-  variables.tf            Root variables
+  main.tf.example        Module usage (copy to main.tf, edit nodes)
+  versions.tf            Provider pinning
+  providers.tf           Provider config
+  variables.tf           Root variables
   terraform.tfvars.example
   .env_example
   scripts/
     proxmox_setup.sh       One-time PVE setup
   modules/
     vm_template/           Creates a cloud-init template
-    k8s_cluster/           Clones template into VMs, generates ansible inventory
+    k3s_cluster/           Clones template into VMs, generates ansible inventory
 ansible/
   site.yml                 common -> k3s -> k3s_server -> k3s_agent -> storage
   README.md                Ansible documentation
@@ -83,7 +84,7 @@ ansible/
     storage.yml            SeaweedFS config (create from example)
   roles/
     common/                Package update, SSH hardening, sudo
-    k3s/                   Swap, kernel modules, sysctl for k8s
+    k3s/                   Swap, kernel modules, sysctl for k3s
     k3s_server/            k3s server, Cilium, Helm, Flux
     k3s_agent/             k3s agent join
     storage/               Data disk, firewall, Docker, SeaweedFS

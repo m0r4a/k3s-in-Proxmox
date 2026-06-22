@@ -25,10 +25,10 @@ module "vm_template" {
 # }
 
 # Option 2: use an existing template (e.g. created by proxmox_setup.sh).
-# Skip the vm_template module and pass the ID directly to k8s_cluster.
+# Skip the vm_template module and pass the ID directly to k3s_cluster.
 
 module "k3s_cluster" {
-  source = "./modules/k8s_cluster"
+  source = "./modules/k3s_cluster"
 
   proxmox_node         = var.proxmox_node
   template_vm_id       = module.vm_template.template_vm_id

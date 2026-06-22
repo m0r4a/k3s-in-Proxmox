@@ -27,7 +27,7 @@ without terraform by writing a manual inventory.
 | Role | Target | Purpose |
 | --- | --- | --- |
 | `common` | all | Package update, base packages, SSH hardening, sudo config, reboot |
-| `k3s` | k3s_cluster | Swap off, kernel modules, sysctl for k8s |
+| `k3s` | k3s_cluster | Swap off, kernel modules, sysctl for k3s |
 | `k3s_server` | control_plane | k3s server, Cilium, Helm, Flux, Hubble |
 | `k3s_agent` | worker | k3s agent join |
 | `storage` | storage | Data disk, firewall, Docker, SeaweedFS |

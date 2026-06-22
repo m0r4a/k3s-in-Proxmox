@@ -8,7 +8,7 @@ storage for PVCs. The cluster is rebuilt with a single `terraform destroy`
 
 1. Migrate from telmate/proxmox to bpg/proxmox provider.
 2. Two Terraform modules: `vm_template` (creates a cloud-init template)
-   and `k8s_cluster` (clones that template into VMs). The cluster module
+   and `k3s_cluster` (clones that template into VMs). The cluster module
    accepts a `template_vm_id` so it works with either the template module
    or a pre-existing template (e.g. one created by `proxmox_setup.sh`).
 3. Fix lifecycle management: changing CPU or RAM on a VM must not
@@ -35,7 +35,7 @@ storage for PVCs. The cluster is rebuilt with a single `terraform destroy`
 │   │   └── proxmox_setup.sh    # One-time PVE setup (role, user, token, template)
 │   └── modules/
 │       ├── vm_template/        # Creates a cloud-init template
-│       └── k8s_cluster/        # Clones template into VMs, generates ansible inventory
+│       └── k3s_cluster/        # Clones template into VMs, generates ansible inventory
 └── ansible/
     ├── site.yml                # Orchestrates all roles
     ├── README.md               # Ansible documentation
@@ -49,7 +49,7 @@ storage for PVCs. The cluster is rebuilt with a single `terraform destroy`
     │   └── storage.yml         # SeaweedFS config (create from example)
     └── roles/
         ├── common/             # Package update, base packages, reboot
-        ├── k3s/                # Swap, kernel modules, sysctl for k8s
+        ├── k3s/                # Swap, kernel modules, sysctl for k3s
         ├── k3s_server/         # k3s server, Cilium, Helm, Flux, Hubble
         ├── k3s_agent/          # k3s agent join
         └── storage/            # Data disk, Docker, SeaweedFS
@@ -101,7 +101,7 @@ Three ways to create the template:
    creates the PVE user/token and SSH service user unless you pass
    `--create-template`.
 
-The `k8s_cluster` module accepts `template_vm_id` and clones whatever
+The `k3s_cluster` module accepts `template_vm_id` and clones whatever
 template is at that ID. It does not care how the template was created.
 
 ### vm_template: download vs existing image

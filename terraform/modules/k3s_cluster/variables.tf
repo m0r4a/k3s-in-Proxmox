@@ -271,7 +271,7 @@ variable "k3s_cluster_cidr" {
 
   validation {
     condition     = can(regex("^[0-9.]+/[0-9]+$", var.k3s_cluster_cidr))
-    error_message = "k3s_cluster_cidr must be in CIDR notation (e.g. 11.0.0.0/16)."
+    error_message = "k3s_cluster_cidr must be in CIDR notation (e.g. 11.1.0.0/16)."
   }
 }
 
@@ -282,7 +282,7 @@ variable "k3s_service_cidr" {
 
   validation {
     condition     = can(regex("^[0-9.]+/[0-9]+$", var.k3s_service_cidr))
-    error_message = "k3s_service_cidr must be in CIDR notation (e.g. 11.1.0.0/16)."
+    error_message = "k3s_service_cidr must be in CIDR notation (e.g. 11.2.0.0/16)."
   }
 }
 

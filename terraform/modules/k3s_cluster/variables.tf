@@ -267,7 +267,7 @@ variable "dns_servers" {
 variable "k3s_cluster_cidr" {
   description = "Pod CIDR for the k3s cluster."
   type        = string
-  default     = "11.0.0.0/16"
+  default     = "11.1.0.0/16"
 
   validation {
     condition     = can(regex("^[0-9.]+/[0-9]+$", var.k3s_cluster_cidr))
@@ -278,7 +278,7 @@ variable "k3s_cluster_cidr" {
 variable "k3s_service_cidr" {
   description = "Service CIDR for the k3s cluster."
   type        = string
-  default     = "11.1.0.0/16"
+  default     = "11.2.0.0/16"
 
   validation {
     condition     = can(regex("^[0-9.]+/[0-9]+$", var.k3s_service_cidr))

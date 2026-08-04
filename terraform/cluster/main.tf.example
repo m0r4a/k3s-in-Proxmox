@@ -4,7 +4,7 @@
 
 # Option 1: create the template with the vm_template module.
 module "vm_template" {
-  source = "./modules/vm_template"
+  source = "../modules/vm_template"
 
   proxmox_node    = var.proxmox_node
   template_vm_id  = var.template_vm_id
@@ -14,7 +14,7 @@ module "vm_template" {
 
 # Option 1a: create the template using an existing image already on Proxmox.
 # module "vm_template" {
-#   source = "./modules/vm_template"
+#   source = "../modules/vm_template"
 #
 #   proxmox_node    = var.proxmox_node
 #   template_vm_id  = var.template_vm_id
@@ -28,7 +28,7 @@ module "vm_template" {
 # Skip the vm_template module and pass the ID directly to k3s_cluster.
 
 module "k3s_cluster" {
-  source = "./modules/k3s_cluster"
+  source = "../modules/k3s_cluster"
 
   proxmox_node         = var.proxmox_node
   template_vm_id       = module.vm_template.template_vm_id
@@ -39,9 +39,12 @@ module "k3s_cluster" {
   network_bridge       = var.network_bridge
   network_gateway      = var.network_gateway
 
+  # Writes ansible/inventory.d/10-cluster.ini. Storage nodes are provisioned
+  # separately by the storage root (see ../storage) and contribute their own
+  # inventory.d fragment.
   ansible = {
     enabled = true
-    path    = "../ansible"
+    path    = "../../ansible"
   }
 
   nodes = {
@@ -65,14 +68,6 @@ module "k3s_cluster" {
       ip     = "10.0.0.12"
       memory = 4096
       cores  = 2
-    }
-    storage1 = {
-      vmid            = 301
-      role            = "storage"
-      ip              = "10.0.0.20"
-      memory          = 4096
-      cores           = 2
-      storage_disk_gb = 100
     }
   }
 }

@@ -1,4 +1,4 @@
-resource "proxmox_virtual_environment_vm" "node" {
+resource "proxmox_virtual_environment_vm" "storage" {
   for_each = local.nodes_normalized
 
   vm_id         = each.value.vmid
@@ -42,6 +42,14 @@ resource "proxmox_virtual_environment_vm" "node" {
     size         = each.value.disk_size_gb
   }
 
+  disk {
+    datastore_id = var.clone_datastore_id
+    interface    = "scsi1"
+    iothread     = true
+    discard      = "on"
+    size         = each.value.storage_disk_gb
+  }
+
   initialization {
     datastore_id = var.cloudinit_datastore_id
     upgrade      = false
@@ -81,7 +89,10 @@ resource "proxmox_virtual_environment_vm" "node" {
   reboot_after_update = true
 
   lifecycle {
-    ignore_changes = [tags]
+    # The "storage" is meant to have a SeaweedFS, I will use it to store PVC data
+    # for the k3s cluster, so it shouldn't be easily destroyed
+    prevent_destroy = true
+    ignore_changes  = [tags]
   }
 }
 
@@ -89,7 +100,7 @@ resource "null_resource" "ssh_keyscan" {
   for_each = local.nodes_normalized
 
   triggers = {
-    vm_id = proxmox_virtual_environment_vm.node[each.key].vm_id
+    vm_id = proxmox_virtual_environment_vm.storage[each.key].vm_id
     vm_ip = each.value.ip
   }
 
@@ -108,5 +119,5 @@ resource "null_resource" "ssh_keyscan" {
     EOT
   }
 
-  depends_on = [proxmox_virtual_environment_vm.node]
+  depends_on = [proxmox_virtual_environment_vm.storage]
 }

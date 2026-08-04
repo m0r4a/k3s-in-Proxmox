@@ -23,7 +23,7 @@ is at that ID.
 
 ```hcl
 module "vm_template" {
-  source = "./modules/vm_template"
+  source = "../modules/vm_template"
 
   proxmox_node    = "server01"
   template_vm_id  = 9001

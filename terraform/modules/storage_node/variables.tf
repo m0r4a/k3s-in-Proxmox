@@ -1,5 +1,5 @@
 variable "proxmox_node" {
-  description = "Proxmox node where the cluster VMs will be created."
+  description = "Proxmox node where the storage VMs will be created."
   type        = string
 
   validation {
@@ -9,7 +9,7 @@ variable "proxmox_node" {
 }
 
 variable "template_vm_id" {
-  description = "VM ID of the cloud-init template to clone. Provide module.vm_template.template_vm_id, or an existing template ID."
+  description = "VM ID of an existing cloud-init template to clone. The storage root does not create the template; point this at a template made by the cluster root's vm_template module or by proxmox_setup.sh."
   type        = number
 
   validation {
@@ -93,36 +93,26 @@ variable "ssh_private_key_path" {
 }
 
 variable "nodes" {
-  description = "Cluster nodes. The map key is the hostname suffix (or full hostname when cluster_name is empty)."
+  description = "Storage nodes. The map key is the hostname suffix (or full hostname when cluster_name is empty). Every node gets an extra data disk sized by storage_disk_gb."
   type = map(object({
-    vmid         = number
-    role         = string
-    ip           = string
-    user         = optional(string)
-    password     = optional(string)
-    cores        = optional(number)
-    memory       = optional(number)
-    disk_size_gb = optional(number)
+    vmid            = number
+    ip              = string
+    user            = optional(string)
+    password        = optional(string)
+    cores           = optional(number)
+    memory          = optional(number)
+    disk_size_gb    = optional(number)
+    storage_disk_gb = optional(number)
   }))
 
   validation {
     condition     = length(var.nodes) > 0
-    error_message = "At least one node is required."
-  }
-
-  validation {
-    condition     = alltrue([for n in var.nodes : contains(["control-plane", "worker"], n.role)])
-    error_message = "Role must be one of: control-plane, worker. Storage nodes live in the separate storage_node module."
+    error_message = "At least one storage node is required."
   }
 
   validation {
     condition     = length(var.nodes) == length(distinct([for n in var.nodes : n.vmid]))
     error_message = "All VM IDs must be unique across nodes."
-  }
-
-  validation {
-    condition     = length([for n in var.nodes : n if n.role == "control-plane"]) >= 1
-    error_message = "At least one control-plane node is required."
   }
 
   validation {
@@ -159,12 +149,17 @@ variable "nodes" {
     condition     = alltrue([for n in var.nodes : n.disk_size_gb == null || n.disk_size_gb >= 20])
     error_message = "Per-node disk_size_gb must be at least 20 GB."
   }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.storage_disk_gb == null || n.storage_disk_gb >= 10])
+    error_message = "Per-node storage_disk_gb must be at least 10 GB."
+  }
 }
 
 variable "cores" {
   description = "Default CPU cores per VM. Overridable per node."
   type        = number
-  default     = 3
+  default     = 2
 
   validation {
     condition     = var.cores >= 1 && var.cores <= 128
@@ -191,6 +186,17 @@ variable "disk_size_gb" {
   validation {
     condition     = var.disk_size_gb >= 20
     error_message = "disk_size_gb must be at least 20 GB."
+  }
+}
+
+variable "storage_disk_gb" {
+  description = "Default size in GB of the extra data disk (scsi1) attached to each storage VM. Overridable per node."
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.storage_disk_gb >= 10
+    error_message = "storage_disk_gb must be at least 10 GB."
   }
 }
 
@@ -242,30 +248,8 @@ variable "dns_servers" {
   }
 }
 
-variable "k3s_cluster_cidr" {
-  description = "Pod CIDR for the k3s cluster."
-  type        = string
-  default     = "11.1.0.0/16"
-
-  validation {
-    condition     = can(regex("^[0-9.]+/[0-9]+$", var.k3s_cluster_cidr))
-    error_message = "k3s_cluster_cidr must be in CIDR notation (e.g. 11.1.0.0/16)."
-  }
-}
-
-variable "k3s_service_cidr" {
-  description = "Service CIDR for the k3s cluster."
-  type        = string
-  default     = "11.2.0.0/16"
-
-  validation {
-    condition     = can(regex("^[0-9.]+/[0-9]+$", var.k3s_service_cidr))
-    error_message = "k3s_service_cidr must be in CIDR notation (e.g. 11.2.0.0/16)."
-  }
-}
-
 variable "ansible" {
-  description = "Ansible integration. When enabled, writes inventory.d/10-cluster.ini to the ansible directory."
+  description = "Ansible integration. When enabled, writes inventory.d/20-storage.ini to the ansible directory."
   type = object({
     enabled = bool
     path    = optional(string, "")
@@ -282,7 +266,7 @@ variable "ansible" {
 }
 
 variable "tags" {
-  description = "Tags applied to every VM in addition to role/cluster tags."
+  description = "Tags applied to every VM in addition to the storage/cluster tags."
   type        = list(string)
   default     = []
 }

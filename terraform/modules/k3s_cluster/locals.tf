@@ -1,29 +1,18 @@
 locals {
   nodes_normalized = {
     for key, value in var.nodes : key => {
-      vmid            = value.vmid
-      role            = value.role
-      hostname        = var.cluster_name != "" ? "${var.cluster_name}-${key}" : key
-      user            = coalesce(value.user, var.vm_user)
-      password        = coalesce(value.password, var.vm_password)
-      cores           = coalesce(value.cores, var.cores)
-      memory          = coalesce(value.memory, var.memory)
-      disk_size_gb    = coalesce(value.disk_size_gb, var.disk_size_gb)
-      storage_disk_gb = coalesce(value.storage_disk_gb, var.storage_disk_gb)
-      ip              = value.ip
-      tags            = distinct(concat(var.tags, ["k3s", value.role], var.cluster_name != "" ? [var.cluster_name] : []))
-      on_boot         = value.role == "storage"
+      vmid         = value.vmid
+      role         = value.role
+      hostname     = var.cluster_name != "" ? "${var.cluster_name}-${key}" : key
+      user         = coalesce(value.user, var.vm_user)
+      password     = coalesce(value.password, var.vm_password)
+      cores        = coalesce(value.cores, var.cores)
+      memory       = coalesce(value.memory, var.memory)
+      disk_size_gb = coalesce(value.disk_size_gb, var.disk_size_gb)
+      ip           = value.ip
+      tags         = distinct(concat(var.tags, ["k3s", value.role], var.cluster_name != "" ? [var.cluster_name] : []))
+      on_boot      = false
     }
-  }
-
-  k3s_nodes = {
-    for key, node in local.nodes_normalized : key => node
-    if node.role != "storage"
-  }
-
-  storage_nodes = {
-    for key, node in local.nodes_normalized : key => node
-    if node.role == "storage"
   }
 
   control_plane_ip = one([

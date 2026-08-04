@@ -36,25 +36,43 @@ Save the token secret from the output. The script prints a
 The script does **not** modify SSH settings on your PVE host. It only
 creates a new user. Your root SSH access is left untouched.
 
-### 3. Provision the cluster
+### 3. Provision the infrastructure (two roots)
+
+The cluster and the storage node live in **separate Terraform roots with
+separate state**, so a cluster `terraform destroy` never touches storage.
+
+Storage is long-lived — apply it once. It clones an existing template, so
+create the template first (via the cluster root's `vm_template` module, or
+`proxmox_setup.sh --create-template`), then:
 
 ```bash
-cd ..  # back to terraform/
-cp main.tf.example main.tf              # edit node definitions
-cp terraform.tfvars.example terraform.tfvars  # edit with your values
+cd terraform/storage
+cp main.tf.example main.tf                     # edit storage node definitions
+cp terraform.tfvars.example terraform.tfvars   # edit with your values
 terraform init
-terraform apply
+terraform apply                                # writes ansible/inventory.d/20-storage.ini
 ```
 
-Terraform creates the template (optional) and clones it into
-control-plane, worker, and storage VMs. It also generates
-`ansible/inventory.ini`.
+The cluster is disposable — apply/destroy at will:
+
+```bash
+cd ../cluster
+cp main.tf.example main.tf                      # edit control-plane/worker nodes
+cp terraform.tfvars.example terraform.tfvars    # edit with your values
+terraform init
+terraform apply                                 # writes ansible/inventory.d/10-cluster.ini
+```
+
+The shared Proxmox connection values can live in one file passed to both
+roots with `terraform apply -var-file=../common.tfvars`.
 
 ### 4. Configure with Ansible
 
+Point Ansible at the `inventory.d/` directory — it merges both fragments:
+
 ```bash
-cd ../ansible
-ansible-playbook -i inventory.ini site.yml
+cd ../../ansible
+ansible-playbook -i inventory.d/ site.yml
 ```
 
 Ansible installs k3s, Cilium, Helm, Flux, and SeaweedFS.
@@ -63,20 +81,24 @@ Ansible installs k3s, Cilium, Helm, Flux, and SeaweedFS.
 
 ```
 terraform/
-  main.tf.example        Module usage (copy to main.tf, edit nodes)
-  versions.tf            Provider pinning
-  providers.tf           Provider config
-  variables.tf           Root variables
-  terraform.tfvars.example
-  .env_example
+  cluster/                 ROOT #1 - disposable k3s cluster (own state)
+    main.tf.example          Module usage (copy to main.tf, edit nodes)
+    versions.tf / providers.tf / variables.tf / terraform.tfvars.example
+  storage/                 ROOT #2 - long-lived storage (own state)
+    main.tf.example          Module usage (copy to main.tf, edit nodes)
+    versions.tf / providers.tf / variables.tf / terraform.tfvars.example
   scripts/
     proxmox_setup.sh       One-time PVE setup
   modules/
     vm_template/           Creates a cloud-init template
-    k3s_cluster/           Clones template into VMs, generates ansible inventory
+    k3s_cluster/           Clones template into k3s VMs, writes 10-cluster.ini
+    storage_node/          Clones template into storage VMs, writes 20-storage.ini
 ansible/
   site.yml                 common -> k3s -> k3s_server -> k3s_agent -> storage
   README.md                Ansible documentation
+  inventory.d/             Generated inventory fragments (read as a directory)
+    10-cluster.ini           From the cluster root (gitignored)
+    20-storage.ini           From the storage root (gitignored)
   group_vars/
     all.yml                Ansible config (cilium, helm, flux URLs)
     control_plane.yml      Extra packages for control plane
@@ -102,17 +124,20 @@ ansible/
 
 ## Terraform and Ansible separation
 
-Terraform generates `ansible/inventory.ini` with infrastructure facts
-(IPs, users, SSH key path, control plane IP, cluster CIDRs). All ansible
-configuration (cilium versions, install URLs, reboot policy) lives in
-committed `ansible/group_vars/all.yml`. Ansible can run standalone with
-a manual inventory.
+Each Terraform root writes its own fragment into `ansible/inventory.d/`
+with infrastructure facts (IPs, users, SSH key path, control plane IP,
+cluster CIDRs): the cluster root writes `10-cluster.ini`, the storage root
+writes `20-storage.ini`. Ansible reads the whole directory and merges them.
+All ansible configuration (cilium versions, install URLs, reboot policy)
+lives in committed `ansible/group_vars/all.yml`. Ansible can run standalone
+with manual fragments (copy the `*.ini.example` files).
 
 ## Workflow
 
-- **Swap clusters**: `terraform destroy` -> edit `main.tf` -> `terraform apply` -> `ansible-playbook site.yml`
-- **Storage survives destroy**: storage VMs have `prevent_destroy = true`. To destroy the cluster but keep storage, remove the storage resource from state first: `terraform state rm module.k3s_cluster.proxmox_virtual_environment_vm.storage["storage1"]`, then `terraform destroy`.
-- **Full decommission**: remove storage from state as above, then `terraform destroy`
+- **Swap clusters** (storage untouched): `cd terraform/cluster && terraform destroy` -> edit `main.tf` -> `terraform apply` -> `cd ../../ansible && ansible-playbook -i inventory.d/ site.yml`
+- **Storage survives destroy**: storage is a separate root/state, so a cluster `terraform destroy` cannot reach it. The storage VM also sets `prevent_destroy = true` as a guard against destroying the storage root by accident.
+- **Reconfigure only storage**: `ansible-playbook -i inventory.d/ site.yml --limit storage`
+- **Intentional storage teardown**: comment out `prevent_destroy` in `modules/storage_node/main.tf`, then `cd terraform/storage && terraform destroy`.
 
 ## Security
 

@@ -1,5 +1,5 @@
 locals {
-  ansible_inventory_path = "${var.ansible.path}/inventory.ini"
+  ansible_inventory_path = "${var.ansible.path}/inventory.d/10-cluster.ini"
 }
 
 resource "local_file" "ansible_inventory" {
